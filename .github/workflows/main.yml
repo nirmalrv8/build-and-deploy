@@ -56,3 +56,38 @@ jobs:
           npx --yes netlify-cli@27 deploy --dir=dist --prod --no-build \
             --message "Deploy ${{ github.sha }}" --json > deploy.json
           echo "url=$(jq -r '.url' deploy.json)" >> "$GITHUB_OUTPUT"
+        
+  preview:
+    name: Deploy preview
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Get artifact from build job
+        uses: actions/download-artifact@v8
+        with:
+          name: artifact
+          path: dist
+      - name: Use Node.js 26.x
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26.x
+      - name: Deploy preview to Netlify
+        id: deploy
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npx --yes netlify-cli@27 deploy --dir=dist --no-build \
+            --alias "pr-${{ github.event.number }}" \
+            --message "PR #${{ github.event.number }}" --json > deploy.json
+          echo "url=$(jq -r '.deploy_url' deploy.json)" >> "$GITHUB_OUTPUT"
+      - name: Comment preview URL on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.number }}" --repo "${{ github.repository }}" \
+            --edit-last --create-if-none \
+            --body "🚀 Preview of ${{ github.event.pull_request.head.sha }} is ready: ${{ steps.deploy.outputs.url }}"
