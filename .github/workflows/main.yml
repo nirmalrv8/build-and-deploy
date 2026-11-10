@@ -27,3 +27,32 @@ jobs:
         with:
           name: artifact
           path: ./code/dist
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    concurrency: production
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Get artifact from build job
+        uses: actions/download-artifact@v8
+        with:
+          name: artifact
+          path: dist
+      - name: Use Node.js 26.x
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26.x
+      - name: Deploy to Netlify
+        id: deploy
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npx --yes netlify-cli@27 deploy --dir=dist --prod --no-build \
+            --message "Deploy ${{ github.sha }}" --json > deploy.json
+          echo "url=$(jq -r '.url' deploy.json)" >> "$GITHUB_OUTPUT"
